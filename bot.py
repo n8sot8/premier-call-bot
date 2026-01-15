@@ -490,7 +490,6 @@ async def shukei_cmd(interaction: discord.Interaction, message_id: str = ""):
 # =========================
 # Lifecycle
 # =========================
-print(f"[ENV] MENTION_ROLE_ID={MENTION_ROLE_ID}"
 @client.event
 async def on_ready():
     print(f"READY: {client.user} (ID: {client.user.id})")
@@ -537,3 +536,4 @@ if __name__ == "__main__":
         print("CHANNEL_ID がないので自動投稿は無効（/tenko /yobi は使える）")
 
     client.run(TOKEN)
+
