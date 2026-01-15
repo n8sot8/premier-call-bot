@@ -12,6 +12,9 @@ kill_timeout = 5
 
 [processes]
   app = "python bot.py"
+
+  app = "premier-call-bot"
+  
 [mounts]
   source = "data"
   destination = "/data"
