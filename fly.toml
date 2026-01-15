@@ -12,3 +12,6 @@ kill_timeout = 5
 
 [processes]
   app = "python bot.py"
+[mounts]
+  source = "data"
+  destination = "/data"
