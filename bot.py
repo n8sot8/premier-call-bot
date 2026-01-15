@@ -27,7 +27,7 @@ DAILY_TENKO_MINUTE = int(os.getenv("DAILY_TENKO_MINUTE", "0"))
 
 # 週一アンケ投稿の基準（0=Mon..6=Sun）
 WEEKLY_POST_DAY = int(os.getenv("WEEKLY_DAY", "6"))       # default: Sunday
-WEEKLY_POST_HOUR = int(os.getenv("WEEKLY_HOUR", "20"))    # default: 20:00
+WEEKLY_POST_HOUR = int(os.getenv("WEEKLY_HOUR", "12"))    # default: 20:00
 WEEKLY_POST_MINUTE = int(os.getenv("WEEKLY_MINUTE", "0"))
 
 # 締切関連
@@ -536,5 +536,6 @@ if __name__ == "__main__":
         print("CHANNEL_ID がないので自動投稿は無効（/tenko /yobi は使える）")
 
     client.run(TOKEN)
+
 
 
