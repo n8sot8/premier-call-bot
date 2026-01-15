@@ -344,3 +344,15 @@ if __name__ == "__main__":
         print("CHANNEL_ID がないので自動投稿は無効（/tenko や /yobi は使える）")
 
     client.run(TOKEN)
+
+@client.event
+async def on_ready():
+    print(f"READY: {client.user}")
+
+    # スラッシュコマンドを「このサーバー」に同期（即反映）
+    if GUILD_ID:
+        await tree.sync(guild=discord.Object(id=GUILD_ID))
+        print("Synced commands to guild")
+    else:
+        await tree.sync()
+        print("Synced commands globally")
