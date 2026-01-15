@@ -2,19 +2,18 @@ app = "premier-call-bot"
 primary_region = "nrt"
 
 kill_signal = "SIGINT"
-kill_timeout = 5
+kill_timeout = "5s"
 
 [build]
   dockerfile = "Dockerfile"
 
 [env]
   TZ = "Asia/Tokyo"
+  DB_PATH = "/data/bot.db"
 
 [processes]
   app = "python bot.py"
 
-  app = "premier-call-bot"
-  
 [mounts]
   source = "data"
   destination = "/data"
