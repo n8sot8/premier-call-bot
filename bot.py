@@ -311,6 +311,10 @@ async def shukei_cmd(interaction: discord.Interaction, message_id: str = ""):
 # =========================
 @client.event
 async def on_ready():
+    print("=== ON_READY START ===")
+    
+@client.event
+async def on_ready():
     gid = guild_id_int()
     cid = channel_id_int()
     print(f"[READY] Logged in as {client.user} (ID: {client.user.id})")
@@ -358,3 +362,4 @@ if __name__ == "__main__":
         print("CHANNEL_ID がないので自動投稿は無効（/tenko や /yobi は使える）")
 
     client.run(TOKEN)
+
