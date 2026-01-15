@@ -11,7 +11,7 @@ from discord.ext import tasks
 from discord.ui import View, Select
 
 # =========================
-# Env
+# Env (NOTE: wait_env後に再取得する)
 # =========================
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "0")) or None
@@ -29,7 +29,7 @@ DB_PATH = os.getenv("DB_PATH", "bot.db")
 # =========================
 # Discord client / commands
 # =========================
-# ボタン/セレクト + スラコマだけなら privileged intents不要
+# ※スラコマ+Viewで privileged intents は基本不要
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
@@ -124,9 +124,6 @@ def format_weekly_table(message_id: int) -> str:
         text = text[:1900] + "\n…（長いので省略）"
     return text
 
-def guild_obj():
-    return discord.Object(id=GUILD_ID) if GUILD_ID else None
-
 # =========================
 # Views
 # =========================
@@ -176,7 +173,6 @@ class WeeklySelect(Select):
         chosen = {int(v) for v in self.values}
 
         with db() as conn:
-            # いったん全削除して入れ直し（簡単&安全）
             conn.execute("DELETE FROM weekly_votes WHERE message_id=? AND user_id=?", (mid, uid))
             for d in chosen:
                 conn.execute(
@@ -220,7 +216,6 @@ async def post_weekly(channel: discord.abc.Messageable) -> int:
 
 def next_weekly_run() -> datetime.datetime:
     now = now_jst()
-    # 今週のターゲット時刻
     days_ahead = (WEEKLY_DAY - now.weekday()) % 7
     target = now.replace(hour=WEEKLY_HOUR, minute=WEEKLY_MINUTE, second=0, microsecond=0) + datetime.timedelta(days=days_ahead)
     if target <= now:
@@ -243,7 +238,7 @@ async def daily_rollcall_loop():
 
 @tasks.loop(seconds=5)
 async def weekly_poll_loop():
-    # 起動後は自分でsleepして週1で実行（無駄に回さない）
+    # 起動後は自分でsleepして週1で実行
     weekly_poll_loop.stop()
 
     if not CHANNEL_ID:
@@ -262,17 +257,20 @@ async def weekly_poll_loop():
 # =========================
 # Slash commands
 # =========================
-@tree.command(name="tenko", description="点呼を開始（✅で参加）", guild=guild_obj())
+# ★重要：ここでは guild= を指定しない（定義を固定）
+#         同期は on_ready で guild sync する（即反映）
+
+@tree.command(name="tenko", description="点呼を開始（✅で参加）")
 async def tenko_cmd(interaction: discord.Interaction):
     mid = await post_tenko(interaction.channel)
     await interaction.response.send_message(f"点呼出した！(message_id={mid})", ephemeral=True)
 
-@tree.command(name="yobi", description="週の出席できそうな曜日アンケを開始", guild=guild_obj())
+@tree.command(name="yobi", description="週の出席できそうな曜日アンケを開始")
 async def yobi_cmd(interaction: discord.Interaction):
     mid = await post_weekly(interaction.channel)
     await interaction.response.send_message(f"曜日アンケ出した！(message_id={mid})", ephemeral=True)
 
-@tree.command(name="shukei", description="集計メッセージを更新する（message_id指定も可）", guild=guild_obj())
+@tree.command(name="shukei", description="集計メッセージを更新する（message_id指定も可）")
 @app_commands.describe(message_id="更新したいメッセージID（空なら直近の投票/点呼）")
 async def shukei_cmd(interaction: discord.Interaction, message_id: str = ""):
     mid = int(message_id) if message_id.strip() else None
@@ -307,52 +305,63 @@ async def shukei_cmd(interaction: discord.Interaction, message_id: str = ""):
 # =========================
 @client.event
 async def on_ready():
-    print(f"Logged in as {client.user} (ID: {client.user.id})")
+    print(f"[READY] Logged in as {client.user} (ID: {client.user.id})")
+    print(f"[ENV] GUILD_ID={GUILD_ID} CHANNEL_ID={CHANNEL_ID} TZ={TZ} DB_PATH={DB_PATH}")
 
-    # 永続ボタン/セレクト（再起動しても効く）
-    client.add_view(TenkoView())
-    client.add_view(WeeklyView())
+    # 永続View（再起動してもボタン/セレクトが生きる）
+    try:
+        client.add_view(TenkoView())
+        client.add_view(WeeklyView())
+        print("[READY] Views registered")
+    except Exception as e:
+        print("[READY] add_view failed:", repr(e))
 
-    # スラコマ同期（GUILD_IDあり＝即反映）
-    if GUILD_ID:
-        await tree.sync(guild=discord.Object(id=GUILD_ID))
-        print("Synced commands to guild")
-    else:
-        await tree.sync()
-        print("Synced commands globally (may take time)")
+    # スラッシュコマンド同期（GUILD_IDあり＝即反映）
+    try:
+        if GUILD_ID:
+            await tree.sync(guild=discord.Object(id=GUILD_ID))
+            print("[READY] Synced commands to guild ✅")
+        else:
+            await tree.sync()
+            print("[READY] Synced commands globally (may take time) ✅")
+    except Exception as e:
+        print("[READY] tree.sync failed:", repr(e))
 
     if not daily_rollcall_loop.is_running():
         daily_rollcall_loop.start()
+        print("[READY] daily_rollcall_loop started")
 
     if not weekly_poll_loop.is_running():
         weekly_poll_loop.start()
+        print("[READY] weekly_poll_loop started")
 
 def wait_env():
     # Flyの反映遅延対策（最大10秒待つ）
-    for _ in range(10):
+    for i in range(10):
         if os.getenv("DISCORD_TOKEN"):
             return
+        print(f"[BOOT] waiting env... {i+1}/10")
         time.sleep(1)
+
+def reload_env():
+    global TOKEN, GUILD_ID, CHANNEL_ID, TZ, JST, DB_PATH
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    GUILD_ID = int(os.getenv("GUILD_ID", "0")) or None
+    CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0")) or None
+    TZ = os.getenv("TZ", "Asia/Tokyo")
+    JST = pytz.timezone(TZ)
+    DB_PATH = os.getenv("DB_PATH", "bot.db")
 
 if __name__ == "__main__":
     wait_env()
+    reload_env()
     init_db()
 
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN がないよ（Fly Secrets を確認して）")
+
     if not CHANNEL_ID:
-        print("CHANNEL_ID がないので自動投稿は無効（/tenko や /yobi は使える）")
+        print("[BOOT] CHANNEL_ID がないので自動投稿は無効（/tenko や /yobi は使える）")
 
+    print("[BOOT] starting client.run() ...")
     client.run(TOKEN)
-
-@client.event
-async def on_ready():
-    print(f"READY: {client.user}")
-
-    # スラッシュコマンドを「このサーバー」に同期（即反映）
-    if GUILD_ID:
-        await tree.sync(guild=discord.Object(id=GUILD_ID))
-        print("Synced commands to guild")
-    else:
-        await tree.sync()
-        print("Synced commands globally")
