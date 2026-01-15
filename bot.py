@@ -1,70 +1,80 @@
 import os
-import discord
-from discord.ext import commands, tasks
+import time
+import asyncio
 from datetime import datetime
 import pytz
+import discord
+from discord.ext import tasks
 
-TOKEN = os.getenv("MTQ2MTE0MDE5MTk5NjY3NDMzMg.GRKlhg.KzwKIzi5OLktodpJIcI3YlfZlT7y5mDvmCFZRY")
-GUILD_ID = int(os.getenv("1381879028331577434", "0"))
-CHANNEL_ID = int(os.getenv("1461138164902002840", "0"))
+# ========= 環境変数を待って取得 =========
+def get_env():
+    token = os.getenv("DISCORD_TOKEN")
+    guild = os.getenv("GUILD_ID")
+    channel = os.getenv("CHANNEL_ID")
+    return token, guild, channel
 
-if not TOKEN or GUILD_ID == 0 or CHANNEL_ID == 0:
-    raise RuntimeError("Missing env vars: DISCORD_TOKEN / GUILD_ID / CHANNEL_ID")
+TOKEN = GUILD_ID_RAW = CHANNEL_ID_RAW = None
 
+# 最大10秒待つ（Fly対策）
+for _ in range(10):
+    TOKEN, GUILD_ID_RAW, CHANNEL_ID_RAW = get_env()
+    if TOKEN and GUILD_ID_RAW and CHANNEL_ID_RAW:
+        break
+    time.sleep(1)
+
+print(
+    "ENV CHECK:",
+    "TOKEN?", bool(TOKEN),
+    "GUILD?", bool(GUILD_ID_RAW),
+    "CHANNEL?", bool(CHANNEL_ID_RAW),
+)
+
+# 取れなかったら安全に終了（クラッシュ扱いさせない）
+if not TOKEN or not GUILD_ID_RAW or not CHANNEL_ID_RAW:
+    print("Env vars not ready. Exit safely.")
+    exit(0)
+
+GUILD_ID = int(GUILD_ID_RAW)
+CHANNEL_ID = int(CHANNEL_ID_RAW)
+
+# ========= Discord 設定 =========
 intents = discord.Intents.default()
-intents.members = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+intents.message_content = True
+intents.members = True  # メンバー取得したい場合（Portal側でON必須）
 
-attendance = {"yes": set(), "no": set()}
+client = discord.Client(intents=intents)
 
-class RollCallView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
+JST = pytz.timezone("Asia/Tokyo")
 
-    @discord.ui.button(label="出席", style=discord.ButtonStyle.green)
-    async def yes(self, interaction: discord.Interaction, button: discord.ui.Button):
-        attendance["yes"].add(interaction.user.id)
-        attendance["no"].discard(interaction.user.id)
-        await interaction.response.send_message("✅ 出席で記録しました", ephemeral=True)
+# ========= 起動時 =========
+@client.event
+async def on_ready():
+    print(f"Bot起動: {client.user}")
+    daily_rollcall.start()
 
-    @discord.ui.button(label="欠席", style=discord.ButtonStyle.red)
-    async def no(self, interaction: discord.Interaction, button: discord.ui.Button):
-        attendance["no"].add(interaction.user.id)
-        attendance["yes"].discard(interaction.user.id)
-        await interaction.response.send_message("❌ 欠席で記録しました", ephemeral=True)
-
+# ========= 毎日17時 点呼 =========
 @tasks.loop(minutes=1)
 async def daily_rollcall():
-    jst = pytz.timezone("Asia/Tokyo")
-    now = datetime.now(jst)
+    now = datetime.now(JST)
+
+    # 17:00 ちょうど
     if now.hour == 17 and now.minute == 0:
-        attendance["yes"].clear()
-        attendance["no"].clear()
-        channel = bot.get_channel(CHANNEL_ID)
-        await channel.send("🕔 **本日のギルド点呼**\n出席 or 欠席 を押してください", view=RollCallView())
+        guild = client.get_guild(GUILD_ID)
+        if guild is None:
+            print("Guild not found")
+            return
 
-@tasks.loop(minutes=1)
-async def report_result():
-    jst = pytz.timezone("Asia/Tokyo")
-    now = datetime.now(jst)
-    if now.hour == 17 and now.minute == 10:
-        guild = bot.get_guild(GUILD_ID)
-        members = [m for m in guild.members if not m.bot]
-        yes, no = attendance["yes"], attendance["no"]
-        no_response = [m.mention for m in members if m.id not in yes and m.id not in no]
-        channel = bot.get_channel(CHANNEL_ID)
+        channel = guild.get_channel(CHANNEL_ID)
+        if channel is None:
+            print("Channel not found")
+            return
 
-        msg = "📊 **本日の点呼結果**\n"
-        msg += f"✅ 出席: {len(yes)}人\n"
-        msg += f"❌ 欠席: {len(no)}人\n"
-        if no_response:
-            msg += "\n⏰ 未回答:\n" + " ".join(no_response)
-        await channel.send(msg)
+        await channel.send(
+            "🕔 **17時の点呼です！**\n"
+            "以下からリアクションしてください👇\n\n"
+            "✅ はい\n"
+            "❌ いいえ"
+        )
 
-@bot.event
-async def on_ready():
-    print("Bot起動")
-    daily_rollcall.start()
-    report_result.start()
-
-bot.run(TOKEN)
+# ========= 実行 =========
+client.run(TOKEN)
