@@ -1,4 +1,5 @@
 app = "premier-call-bot"
+primary_region = "nrt"
 
 kill_signal = "SIGINT"
 kill_timeout = 5
