@@ -1,13 +1,23 @@
-app = "premier-call-bot"
+# fly.toml app configuration file generated for premier-call-bot on 2026-01-15T00:37:23Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-kill_signal = "SIGINT"
-kill_timeout = 5
+app = 'premier-call-bot'
+primary_region = 'iad'
 
 [build]
-  dockerfile = "Dockerfile"
 
-[env]
-  TZ = "Asia/Tokyo"
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
 
-[processes]
-  app = "python bot.py"
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 1024
