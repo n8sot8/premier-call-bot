@@ -79,7 +79,7 @@ def init_db():
             PRIMARY KEY(message_id, user_id, day)
         );
         """)
-try:
+        try:
             conn.execute("ALTER TABLE attendance ADD COLUMN status TEXT")
         except sqlite3.OperationalError:
             pass
@@ -413,4 +413,5 @@ if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN がありません")
     client.run(TOKEN)
+
 
