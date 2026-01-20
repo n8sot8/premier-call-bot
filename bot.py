@@ -79,6 +79,10 @@ def init_db():
             PRIMARY KEY(message_id, user_id, day)
         );
         """)
+try:
+            conn.execute("ALTER TABLE attendance ADD COLUMN status TEXT")
+        except sqlite3.OperationalError:
+            pass
 
 def now_jst():
     return datetime.datetime.now(JST)
@@ -409,3 +413,4 @@ if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN がありません")
     client.run(TOKEN)
+
