@@ -211,41 +211,48 @@ def weekly_embed(message_id: int, closed: bool = False, close_at: datetime.datet
 class TenkoView(View):
     def __init__(self, disabled: bool = False):
         super().__init__(timeout=None)
-        # ボタンを動的に無効化
         for item in self.children:
             if isinstance(item, discord.ui.Button):
                 item.disabled = disabled
 
-    @discord.ui.button(label="✅ 参加/取消", style=discord.ButtonStyle.success, custom_id="tenko_toggle")
-    async def toggle(self, interaction: discord.Interaction, _button: discord.ui.Button):
+    async def set_status(self, interaction: discord.Interaction, status: str):
         mid = interaction.message.id
         uid = interaction.user.id
 
-        # closedなら弾く
         with db() as conn:
             row = conn.execute("SELECT status FROM meta WHERE message_id=?", (mid,)).fetchone()
         if row and row[0] == "closed":
             return await interaction.response.send_message("この点呼は締切済み！", ephemeral=True)
 
         with db() as conn:
-            exists = conn.execute(
-                "SELECT 1 FROM attendance WHERE message_id=? AND user_id=?",
-                (mid, uid)
-            ).fetchone()
-
-            if exists:
-                conn.execute("DELETE FROM attendance WHERE message_id=? AND user_id=?", (mid, uid))
-                msg = "取消したよ"
-            else:
-                conn.execute("INSERT OR IGNORE INTO attendance(message_id,user_id) VALUES(?,?)", (mid, uid))
-                msg = "参加にしたよ"
+            conn.execute("""
+                INSERT INTO attendance(message_id,user_id,status)
+                VALUES(?,?,?)
+                ON CONFLICT(message_id,user_id)
+                DO UPDATE SET status=excluded.status
+            """, (mid, uid, status))
 
             row = conn.execute("SELECT close_at FROM meta WHERE message_id=?", (mid,)).fetchone()
             close_at = parse_iso(row[0]) if row else None
 
         await interaction.response.defer(thinking=False)
-        await interaction.message.edit(embed=tenko_embed(mid, closed=False, close_at=close_at), view=TenkoView(disabled=False))
-        await interaction.followup.send(msg, ephemeral=True)
+        await interaction.message.edit(
+            embed=tenko_embed(mid, closed=False, close_at=close_at),
+            view=TenkoView(disabled=False)
+        )
+        await interaction.followup.send(
+            "参加にしたよ！" if status == "yes" else "不参加にしたよ！",
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="✅ 参加", style=discord.ButtonStyle.success, custom_id="tenko_yes")
+    async def yes(self, interaction: discord.Interaction, _):
+        await self.set_status(interaction, "yes")
+
+    @discord.ui.button(label="❌ 不参加", style=discord.ButtonStyle.danger, custom_id="tenko_no")
+    async def no(self, interaction: discord.Interaction, _):
+        await self.set_status(interaction, "no")
+
 
 class WeeklySelect(Select):
     def __init__(self, disabled: bool = False):
@@ -536,6 +543,7 @@ if __name__ == "__main__":
         print("CHANNEL_ID がないので自動投稿は無効（/tenko /yobi は使える）")
 
     client.run(TOKEN)
+
 
 
 
